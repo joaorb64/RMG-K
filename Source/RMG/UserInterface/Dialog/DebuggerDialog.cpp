@@ -31,6 +31,7 @@
 #include <QMenu>
 #include <QAction>
 #include <QScrollBar>
+#include <cstring>
 
 #ifdef DEBUGGER_ENABLED
 #include <keystone/keystone.h>
@@ -237,78 +238,113 @@ void DebuggerDialog::buildUI()
     splitter->addWidget(this->asmTable);
 
     // ── Right panel ───────────────────────────────────────────────────────
-    this->rightTabs = new QTabWidget(this);
-    this->rightTabs->setMinimumWidth(240);
+    QWidget* rightPanel = new QWidget(this);
+    QVBoxLayout* rightLayout = new QVBoxLayout(rightPanel);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(3);
+    rightPanel->setMinimumWidth(340);
 
-    // ---- Breakpoints tab ----
-    QWidget* bpWidget = new QWidget(this);
-    QVBoxLayout* bpLayout = new QVBoxLayout(bpWidget);
-    bpLayout->setContentsMargins(4, 4, 4, 4);
-    bpLayout->setSpacing(3);
+    // ---- Breakpoints (above tabs) ----
+    QLabel* bpLabel = new QLabel("Breakpoints:", rightPanel);
+    rightLayout->addWidget(bpLabel);
 
-    this->breakpointList = new QListWidget(bpWidget);
+    this->breakpointList = new QListWidget(rightPanel);
     this->breakpointList->setFont(mono);
-    bpLayout->addWidget(this->breakpointList);
+    this->breakpointList->setMaximumHeight(120);
+    rightLayout->addWidget(this->breakpointList);
 
     QHBoxLayout* bpBtns = new QHBoxLayout();
-    this->removeBpButton = new QPushButton("Remove", bpWidget);
+    this->removeBpButton = new QPushButton("Remove", rightPanel);
     bpBtns->addWidget(this->removeBpButton);
     bpBtns->addStretch();
-    bpLayout->addLayout(bpBtns);
-    this->rightTabs->addTab(bpWidget, "Breakpoints");
+    rightLayout->addLayout(bpBtns);
 
-    // ---- GPR registers tab ----
-    this->gprTable = new QTableWidget(34, 2, this); // 32 GPR + HI + LO
+    // ---- Tab widget (registers only) ----
+    this->rightTabs = new QTabWidget(rightPanel);
+    rightLayout->addWidget(this->rightTabs, 1);
+
+    // ---- GPR registers tab: 2 columns of regs (4 table columns) ----
+    // 32 GPR + HI + LO = 34 regs → 17 rows
+    static const int kGPRRows = 17;
+    this->gprTable = new QTableWidget(kGPRRows, 4, this);
     this->gprTable->setFont(mono);
-    this->gprTable->setHorizontalHeaderLabels({"Reg", "Value"});
+    this->gprTable->setHorizontalHeaderLabels({"Reg", "Value", "Reg", "Value"});
     this->gprTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
     this->gprTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    this->gprTable->setColumnWidth(0, 44);
+    this->gprTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
+    this->gprTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    this->gprTable->setColumnWidth(0, 40);
+    this->gprTable->setColumnWidth(2, 40);
     this->gprTable->verticalHeader()->setVisible(false);
     this->gprTable->verticalHeader()->setDefaultSectionSize(kRowHeight);
     this->gprTable->setSelectionMode(QAbstractItemView::SingleSelection);
     this->gprTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
 
-    for (int i = 0; i < 32; ++i)
+    // Fill GPR: left column regs 0-16, right column regs 17-33
+    static const char* kHILO[2] = { "hi", "lo" };
+    for (int row = 0; row < kGPRRows; ++row)
     {
-        QTableWidgetItem* nameItem = new QTableWidgetItem(kGPRNames[i]);
-        nameItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        this->gprTable->setItem(i, 0, nameItem);
-        this->gprTable->setItem(i, 1, new QTableWidgetItem("0x0000000000000000"));
-    }
-    for (int i = 32; i <= 33; ++i) // HI, LO — read-only
-    {
-        QTableWidgetItem* n = new QTableWidgetItem(i == 32 ? "hi" : "lo");
-        n->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        this->gprTable->setItem(i, 0, n);
-        QTableWidgetItem* v = new QTableWidgetItem("0x0000000000000000");
-        v->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        this->gprTable->setItem(i, 1, v);
+        int leftIdx  = row;
+        int rightIdx = row + kGPRRows;
+
+        // Left: name
+        const char* leftName = (leftIdx < 32) ? kGPRNames[leftIdx] : kHILO[leftIdx - 32];
+        auto* ln = new QTableWidgetItem(leftName);
+        ln->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        this->gprTable->setItem(row, 0, ln);
+        // Left: value (read-only for hi/lo)
+        auto* lv = new QTableWidgetItem("00000000 00000000");
+        if (leftIdx >= 32) lv->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        this->gprTable->setItem(row, 1, lv);
+
+        if (rightIdx < 34)
+        {
+            const char* rightName = (rightIdx < 32) ? kGPRNames[rightIdx] : kHILO[rightIdx - 32];
+            auto* rn = new QTableWidgetItem(rightName);
+            rn->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            this->gprTable->setItem(row, 2, rn);
+            auto* rv = new QTableWidgetItem("00000000 00000000");
+            if (rightIdx >= 32) rv->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            this->gprTable->setItem(row, 3, rv);
+        }
     }
     this->rightTabs->addTab(this->gprTable, "GPR");
 
-    // ---- FP registers tab ----
-    this->fpTable = new QTableWidget(32, 2, this);
+    // ---- FP registers tab: 2 columns of regs (4 table columns) ----
+    // 32 FP regs → 16 rows
+    static const int kFPRows = 16;
+    this->fpTable = new QTableWidget(kFPRows, 4, this);
     this->fpTable->setFont(mono);
-    this->fpTable->setHorizontalHeaderLabels({"Reg", "Value"});
+    this->fpTable->setHorizontalHeaderLabels({"Reg", "Value", "Reg", "Value"});
     this->fpTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
     this->fpTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    this->fpTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
+    this->fpTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
     this->fpTable->setColumnWidth(0, 30);
+    this->fpTable->setColumnWidth(2, 30);
     this->fpTable->verticalHeader()->setVisible(false);
     this->fpTable->verticalHeader()->setDefaultSectionSize(kRowHeight);
     this->fpTable->setSelectionMode(QAbstractItemView::SingleSelection);
     this->fpTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
 
-    for (int i = 0; i < 32; ++i)
+    for (int row = 0; row < kFPRows; ++row)
     {
-        QTableWidgetItem* n = new QTableWidgetItem(QString("f%1").arg(i));
-        n->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        this->fpTable->setItem(i, 0, n);
-        this->fpTable->setItem(i, 1, new QTableWidgetItem("0.0"));
+        int leftIdx  = row;
+        int rightIdx = row + kFPRows;
+
+        auto* ln = new QTableWidgetItem(QString("f%1").arg(leftIdx));
+        ln->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        this->fpTable->setItem(row, 0, ln);
+        this->fpTable->setItem(row, 1, new QTableWidgetItem("00000000 00000000"));
+
+        auto* rn = new QTableWidgetItem(QString("f%1").arg(rightIdx));
+        rn->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        this->fpTable->setItem(row, 2, rn);
+        this->fpTable->setItem(row, 3, new QTableWidgetItem("00000000 00000000"));
     }
     this->rightTabs->addTab(this->fpTable, "FP");
 
-    splitter->addWidget(this->rightTabs);
+    splitter->addWidget(rightPanel);
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);
     rootLayout->addWidget(splitter, 1);
@@ -481,18 +517,22 @@ void DebuggerDialog::updatePCLabel(uint32_t pc)
 void DebuggerDialog::refreshDisasm(uint32_t baseAddr)
 {
     this->disasmBaseAddr = baseAddr;
-    // Keep the jump field in sync so the user can copy the visible address
     this->jumpAddressEdit->setText(QString("0x%1").arg(baseAddr, 8, 16, QChar('0')).toUpper());
     this->asmTable->blockSignals(true);
+
+    bool emulationRunning = CoreIsEmulationRunning();
 
     for (int row = 0; row < kDisasmRows; ++row)
     {
         uint32_t addr  = baseAddr + (uint32_t)(row * 4);
-        uint32_t instr = CoreDebugMemRead32(addr);
+        uint32_t instr = emulationRunning ? CoreDebugMemRead32(addr) : 0;
 
         char op[64]    = {};
         char args[256] = {};
-        CoreDebugDecodeOp(instr, op, args, addr);
+        if (emulationRunning)
+            CoreDebugDecodeOp(instr, op, args, addr);
+        else
+            strncpy(op, "nop", sizeof(op));
 
         bool isPC      = (addr == this->currentPC);
         bool isChanged = this->m_changedInstructions.count(addr) > 0;
@@ -539,18 +579,47 @@ void DebuggerDialog::refreshDisasm(uint32_t baseAddr)
 void DebuggerDialog::refreshRegisters()
 {
     this->m_updatingRegs = true;
-    for (int i = 0; i < 32; ++i)
+
+    auto fmtHex64 = [](uint64_t v) -> QString {
+        return QString("%1 %2")
+            .arg((uint32_t)(v >> 32), 8, 16, QChar('0'))
+            .arg((uint32_t)(v & 0xFFFFFFFF), 8, 16, QChar('0'))
+            .toUpper();
+    };
+
+    // GPR: 17 rows, left col = reg[row], right col = reg[row+17]
+    for (int row = 0; row < 17; ++row)
     {
-        int64_t val = CoreDebugGetGPRRegister((CoreDebugger::GPRRegister)i);
-        if (auto* it = this->gprTable->item(i, 1))
-            it->setText(QString("0x%1").arg((uint64_t)val, 16, 16, QChar('0')).toUpper());
+        int leftIdx  = row;
+        int rightIdx = row + 17;
+
+        if (leftIdx < 32) {
+            uint64_t val = (uint64_t)CoreDebugGetGPRRegister((CoreDebugger::GPRRegister)leftIdx);
+            if (auto* it = this->gprTable->item(row, 1))
+                it->setText(fmtHex64(val));
+        }
+        if (rightIdx < 32) {
+            uint64_t val = (uint64_t)CoreDebugGetGPRRegister((CoreDebugger::GPRRegister)rightIdx);
+            if (auto* it = this->gprTable->item(row, 3))
+                it->setText(fmtHex64(val));
+        }
+        // HI/LO (indices 32-33) left as-is — not directly readable via the API
     }
-    for (int i = 0; i < 32; ++i)
+
+    // FP: 16 rows, left col = f[row], right col = f[row+16] — display as hex bits
+    for (int row = 0; row < 16; ++row)
     {
-        double val = CoreDebugGetFPRegister((CoreDebugger::FPRegister)i);
-        if (auto* it = this->fpTable->item(i, 1))
-            it->setText(QString::number(val, 'g', 10));
+        double vl = CoreDebugGetFPRegister((CoreDebugger::FPRegister)(row));
+        double vr = CoreDebugGetFPRegister((CoreDebugger::FPRegister)(row + 16));
+        uint64_t bl, br;
+        memcpy(&bl, &vl, sizeof(bl));
+        memcpy(&br, &vr, sizeof(br));
+        if (auto* it = this->fpTable->item(row, 1))
+            it->setText(fmtHex64(bl));
+        if (auto* it = this->fpTable->item(row, 3))
+            it->setText(fmtHex64(br));
     }
+
     this->m_updatingRegs = false;
 }
 
@@ -903,20 +972,37 @@ void DebuggerDialog::revertLine(int row)
 // ── Register editing ──────────────────────────────────────────────────────
 void DebuggerDialog::onGPRItemChanged(QTableWidgetItem* item)
 {
-    if (this->m_updatingRegs || item->column() != 1 || item->row() >= 32) return;
+    if (this->m_updatingRegs) return;
+    int col = item->column();
+    if (col != 1 && col != 3) return;
+
+    int regIdx = (col == 1) ? item->row() : item->row() + 17;
+    if (regIdx >= 32) return; // HI/LO not writable
+
     bool ok = false;
-    QString hex = item->text().trimmed();
+    QString hex = item->text().trimmed().remove(' ');
     if (hex.startsWith("0x", Qt::CaseInsensitive)) hex = hex.mid(2);
     uint64_t val = hex.toULongLong(&ok, 16);
-    if (ok) CoreDebugSetGPRRegister((CoreDebugger::GPRRegister)item->row(), (int64_t)val);
+    if (ok) CoreDebugSetGPRRegister((CoreDebugger::GPRRegister)regIdx, (int64_t)val);
 }
 
 void DebuggerDialog::onFPItemChanged(QTableWidgetItem* item)
 {
-    if (this->m_updatingRegs || item->column() != 1) return;
+    if (this->m_updatingRegs) return;
+    int col = item->column();
+    if (col != 1 && col != 3) return;
+
+    int regIdx = (col == 1) ? item->row() : item->row() + 16;
+
     bool ok = false;
-    double val = item->text().toDouble(&ok);
-    if (ok) CoreDebugSetFPRegister((CoreDebugger::FPRegister)item->row(), val);
+    QString hex = item->text().trimmed().remove(' ');
+    if (hex.startsWith("0x", Qt::CaseInsensitive)) hex = hex.mid(2);
+    uint64_t bits = hex.toULongLong(&ok, 16);
+    if (ok) {
+        double val;
+        memcpy(&val, &bits, sizeof(val));
+        CoreDebugSetFPRegister((CoreDebugger::FPRegister)regIdx, val);
+    }
 }
 
 // ── Refresh timer ─────────────────────────────────────────────────────────
