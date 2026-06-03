@@ -9,15 +9,17 @@ generator="Unix Makefiles"
 install_cheats="ON"
 bundle_dependencies="ON"
 use_angrylion="ON"
+debugger="ON"
 
 if [[ "$1" = "--help" ]] || [[ "$1" = "-h" ]]; then
-    echo "$0 [Build Config] [Thread Count] [--kaillera-app-version <version>] [--no-cheats] [--no-angrylion] [--no-bundle-dependencies] [--fast-dev]"
+    echo "$0 [Build Config] [Thread Count] [--kaillera-app-version <version>] [--no-cheats] [--no-angrylion] [--no-bundle-dependencies] [--fast-dev] [--debugger]"
     echo ""
     echo "Options:"
     echo "  --no-cheats              Skip installing bundled cheat files"
     echo "  --no-angrylion           Skip building/installing the angrylion video plugin"
     echo "  --no-bundle-dependencies Skip Windows dependency bundling"
     echo "  --fast-dev               Equivalent to --no-cheats --no-angrylion --no-bundle-dependencies"
+    echo "  --debugger               Enable debugger window (interpreter modes only)"
     echo ""
     echo "Examples:"
     echo "  $0 Release"
@@ -46,6 +48,10 @@ while [[ $# -gt 0 ]]; do
             install_cheats="OFF"
             bundle_dependencies="OFF"
             use_angrylion="OFF"
+            shift
+            ;;
+        --debugger)
+            debugger="ON"
             shift
             ;;
         --kaillera-app-version)
@@ -84,6 +90,7 @@ cmake_args=(
     -DPORTABLE_INSTALL=ON
     -DUSE_ANGRYLION="$use_angrylion"
     -DINSTALL_CHEATS="$install_cheats"
+    -DDEBUGGER="$debugger"
 )
 if [[ -n "$kaillera_app_version_override" ]]; then
     cmake_args+=(-DKAILLERA_APP_VERSION_OVERRIDE="$kaillera_app_version_override")

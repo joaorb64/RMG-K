@@ -13,6 +13,7 @@
 #include "Dialog/Cheats/CheatsDialog.hpp"
 #include "Dialog/SettingsDialog.hpp"
 #include "Dialog/RomInfoDialog.hpp"
+#include "Dialog/DebuggerDialog.hpp"
 #ifdef UPDATER
 #include "UserInterface/Dialog/Update/DownloadUpdateDialog.hpp"
 #include "UserInterface/Dialog/Update/InstallUpdateDialog.hpp"
@@ -34,6 +35,7 @@
 #include "OnScreenDisplay.hpp"
 #include "Callbacks.hpp"
 #include "VidExt.hpp"
+#include <RMG-Core/Debugger.hpp>
 
 #ifdef UPDATER
 #include <QNetworkAccessManager>
@@ -158,6 +160,7 @@ public:
 #include <vector>
 
 #include <RMG-Core/CachedRomHeaderAndSettings.hpp>
+#include <RMG-Core/Debugger.hpp>
 #include <RMG-Core/SpeedLimiter.hpp>
 #include <RMG-Core/Directories.hpp>
 #include <RMG-Core/SpeedFactor.hpp>
@@ -187,6 +190,8 @@ static bool isRaphnetRawPlugin()
     std::string pluginName = CoreSettingsGetStringValue(SettingsID::Core_INPUT_Plugin);
     return pluginName.find("raphnetraw") != std::string::npos;
 }
+
+static Dialog::DebuggerDialog* s_debuggerDialog = nullptr;
 
 namespace
 {
@@ -3153,6 +3158,9 @@ void MainWindow::connectActionSignals(void)
     connect(this->action_View_RefreshRoms, &QAction::triggered, this, &MainWindow::on_Action_View_RefreshRoms);
     connect(this->action_View_ClearRomCache, &QAction::triggered, this, &MainWindow::on_Action_View_ClearRomCache);
     connect(this->action_View_Log, &QAction::triggered, this, &MainWindow::on_Action_View_Log);
+#ifdef DEBUGGER_ENABLED
+    connect(this->action_View_Debugger, &QAction::triggered, this, &MainWindow::on_Action_View_Debugger);
+#endif
     connect(this->action_View_Search, &QAction::triggered, this, &MainWindow::on_Action_View_Search);
 
     connect(this->action_Netplay_BrowseSessions, &QAction::triggered, this, &MainWindow::on_Action_Netplay_BrowseSessions);
@@ -4288,6 +4296,54 @@ void MainWindow::on_Action_View_Log(void)
 {
     this->logDialog.show();
 }
+
+#ifdef DEBUGGER_ENABLED
+void MainWindow::on_Action_View_Debugger(void)
+{
+    // Only allow debugger in non-JIT modes
+    if (CoreIsEmulationRunning())
+    {
+        CoreDebugger::CPUMode mode = CoreDebugGetCPUMode();
+        if (mode == CoreDebugger::CPUMode::DynamicRecompiler)
+        {
+            QMessageBox::warning(this, "Debugger",
+                "The debugger is only available in Pure Interpreter and Cached Interpreter modes.\n"
+                "Please switch the CPU emulator mode in Settings and restart emulation.");
+            return;
+        }
+    }
+
+    if (this->debuggerDialog == nullptr)
+    {
+        this->debuggerDialog = new Dialog::DebuggerDialog(this);
+    }
+
+    // Initialize debugger and register UI callback
+    CoreDebuggerInit();
+    CoreDebugSetUIUpdateCallback([](unsigned int pc) {
+        QMetaObject::invokeMethod(qApp, [pc]() {
+            auto* mw = qobject_cast<MainWindow*>(qApp->activeWindow());
+            if (!mw) {
+                for (QWidget* w : qApp->topLevelWidgets()) {
+                    mw = qobject_cast<MainWindow*>(w);
+                    if (mw) break;
+                }
+            }
+            if (mw) mw->on_Debugger_Update(pc);
+        }, Qt::QueuedConnection);
+    });
+
+    this->debuggerDialog->show();
+    this->debuggerDialog->activateWindow();
+    this->debuggerDialog->raise();
+}
+
+void MainWindow::on_Debugger_Update(unsigned int pc)
+{
+    if (this->debuggerDialog && this->debuggerDialog->isVisible())
+        this->debuggerDialog->OnDebuggerUpdate(pc);
+}
+#endif
 
 void MainWindow::on_Action_View_Search(void)
 {

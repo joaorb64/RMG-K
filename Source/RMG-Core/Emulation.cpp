@@ -17,6 +17,7 @@
 #include "Library.hpp"
 #include "Netplay.hpp"
 #include "Kaillera.hpp"
+#include "Debugger.hpp"
 #include "Plugins.hpp"
 #include "Cheats.hpp"
 #include "Error.hpp"
@@ -165,6 +166,7 @@ static void FrameCallback(unsigned int frameIndex)
     // This ensures we sync exactly once per frame regardless of PIF polling timing
     s_SyncedThisFrame = false;
 #endif
+    
 }
 
 // Kaillera PIF sync callback (called from mupen64plus-core after netplay sync)
@@ -692,6 +694,12 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
 
         CoreRollbackSetVerboseStats(CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats));
         setRollbackLoggingEnvironment();
+
+        // Set up debugger system before execution
+        fprintf(stderr, "[EMULATION] About to call CoreDebugPreExecuteSetup\n");
+        CoreDebugPreExecuteSetup();
+        CoreDebuggerInit();
+        fprintf(stderr, "[EMULATION] CoreDebugPreExecuteSetup done\n");
 
         if (rollbackExecute)
         {

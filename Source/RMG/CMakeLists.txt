@@ -77,6 +77,8 @@ set(RMG_SOURCES
     UserInterface/Dialog/RaphnetInputDialog.cpp
     UserInterface/Dialog/LogDialog.cpp
     UserInterface/Dialog/LogDialog.ui
+    UserInterface/Dialog/DebuggerDialog.cpp
+    UserInterface/Dialog/DebuggerDialog.hpp
     UserInterface/NoFocusDelegate.cpp
     UserInterface/EventFilter.cpp
     UserInterface/UIResources.rc
@@ -145,6 +147,10 @@ endif(NETPLAY)
 set_source_files_properties(${IMGUI_SOURCES} PROPERTIES GENERATED TRUE)
 list(APPEND RMG_SOURCES ${IMGUI_SOURCES})
 
+if (DEBUGGER)
+    list(APPEND RMG_SOURCES UserInterface/Dialog/DebuggerDialog.cpp)
+endif()
+
 if (CMAKE_BUILD_TYPE MATCHES Release)
     add_executable(RMG WIN32 ${RMG_SOURCES})
 else()
@@ -200,3 +206,11 @@ if (NETPLAY)
         )
     endif(WIN32)
 endif(NETPLAY)
+
+if (DEBUGGER)
+    target_link_libraries(RMG keystone)
+    target_include_directories(RMG PRIVATE
+        ${CMAKE_SOURCE_DIR}/Source/3rdParty/keystone/include
+    )
+    add_definitions(-DDEBUGGER_ENABLED)
+endif(DEBUGGER)

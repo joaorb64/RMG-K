@@ -41,9 +41,11 @@ set(RMG_CORE_SOURCES
     Library.cpp
     Netplay.cpp
     Kaillera.cpp
+    Debugger.cpp
     Plugins.cpp
     Version.cpp
     Cheats.cpp
+    Debugger.cpp
     String.cpp
     Volume.cpp
     VidExt.cpp

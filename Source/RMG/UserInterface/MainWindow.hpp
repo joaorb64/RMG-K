@@ -26,6 +26,9 @@
 #include "KailleraSessionManager.hpp"
 #endif // NETPLAY
 #include "Dialog/LogDialog.hpp"
+#ifdef DEBUGGER_ENABLED
+#include "Dialog/DebuggerDialog.hpp"
+#endif
 
 #include <string>
 #ifdef UPDATER
@@ -140,6 +143,9 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     QString ui_WindowTitle;
 
     Dialog::LogDialog logDialog;
+#ifdef DEBUGGER_ENABLED
+    Dialog::DebuggerDialog* debuggerDialog = nullptr;
+#endif
 #ifdef NETPLAY
     Dialog::NetplaySessionDialog* netplaySessionDialog = nullptr;
     KailleraSessionManager* kailleraSessionManager = nullptr;
@@ -275,6 +281,10 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     void on_Action_View_RefreshRoms(void);
     void on_Action_View_ClearRomCache(void);
     void on_Action_View_Log(void);
+#ifdef DEBUGGER_ENABLED
+    void on_Action_View_Debugger(void);
+    void on_Debugger_Update(unsigned int pc);
+#endif
     void on_Action_View_Search(void);
 
     void on_Action_Netplay_CreateSession(void);
